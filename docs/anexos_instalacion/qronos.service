@@ -1,0 +1,20 @@
+# QRonos · servicio systemd (/etc/systemd/system/qronos.service)
+[Unit]
+Description=QRonos - Control de acceso con QR dinamico
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=qronos
+WorkingDirectory=/opt/qronos/app/prototipo
+EnvironmentFile=/opt/qronos/app/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
