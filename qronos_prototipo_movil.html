@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QRonos — Prototipo móvil (maqueta)</title>
+<style>
+  :root {
+    --verde-oscuro: #03392b;
+    --verde-medio: #0a7a4c;
+    --verde-claro: #d5ecd9;
+    --azul: #1a9bc4;
+    --texto: #1c2b26;
+    --gris: #6b7a74;
+    --fondo: #f3f5f4;
+    --blanco: #ffffff;
+    --rojo: #c0392b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: var(--fondo);
+    color: var(--texto);
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(180deg, #02251c, var(--verde-oscuro));
+    color: var(--blanco);
+    padding: 18px 20px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .marca { font-size: 24px; font-weight: 700; letter-spacing: 0.5px; }
+  .marca span { color: #8fe0b0; }
+  .avatar {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--verde-claro); color: var(--verde-oscuro);
+    display: grid; place-items: center; font-weight: 700;
+  }
+  nav {
+    background: var(--blanco);
+    border-bottom: 1px solid #e2e7e5;
+    display: flex;
+    gap: 22px;
+    padding: 0 20px;
+    overflow-x: auto;
+  }
+  nav button {
+    background: none; border: none; cursor: pointer;
+    padding: 14px 0; font-size: 15px; color: var(--gris);
+    border-bottom: 3px solid transparent; white-space: nowrap;
+  }
+  nav button.activo { color: var(--verde-medio); font-weight: 700; border-bottom-color: var(--verde-medio); }
+  main {
+    padding: 16px;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 1fr;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  @media (min-width: 760px) {
+    main { grid-template-columns: 1fr 1fr; }
+    .ancha { grid-column: span 2; }
+  }
+  .tarjeta {
+    background: var(--blanco);
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    padding: 18px;
+  }
+  .tarjeta h2 {
+    font-size: 17px; font-weight: 700; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .etiqueta { font-size: 12px; color: var(--gris); font-weight: 400; }
+  .qr-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  canvas { background: var(--blanco); border: 1px solid #e2e7e5; border-radius: 8px; }
+  .contador { font-size: 14px; color: var(--verde-medio); font-weight: 700; }
+  .barra { width: 100%; height: 6px; background: #e2e7e5; border-radius: 4px; overflow: hidden; }
+  .barra div { height: 100%; width: 100%; background: var(--verde-medio); transition: width 1s linear; }
+  .boton {
+    background: var(--verde-medio); color: var(--blanco);
+    border: none; border-radius: 6px; padding: 12px 18px;
+    font-weight: 700; letter-spacing: 0.4px; cursor: pointer; width: 100%;
+  }
+  .boton.secundario { background: none; color: var(--verde-medio); border: 2px solid var(--verde-medio); }
+  .fila {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid #eef1ef; font-size: 14px;
+  }
+  .fila:last-child { border-bottom: none; }
+  .chip {
+    font-size: 12px; padding: 3px 8px; border-radius: 10px; font-weight: 700;
+  }
+  .ok { background: var(--verde-claro); color: var(--verde-oscuro); }
+  .alerta { background: #fdecea; color: var(--rojo); }
+  .info { background: #e3f4fb; color: #125f7b; }
+  .stat { display: flex; justify-content: space-between; padding: 6px 0; font-size: 14px; }
+  .stat strong { color: var(--verde-medio); }
+  .banner {
+    background: linear-gradient(90deg, var(--azul), #0f7aa0);
+    color: var(--blanco); border-radius: 12px; padding: 16px 18px;
+  }
+  .banner small { opacity: 0.9; }
+  .nota {
+    text-align: center; font-size: 12px; color: var(--gris);
+    padding: 12px 16px 28px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="marca">QR<span>onos</span></div>
+  <div class="avatar" title="Usuario">R</div>
+</header>
+
+<nav>
+  <button class="activo">Inicio</button>
+  <button>Mi acceso</button>
+  <button>Historial</button>
+  <button>Ayuda</button>
+</nav>
+
+<main>
+
+  <section class="tarjeta">
+    <h2>Mi credencial <span class="chip ok">Activa</span></h2>
+    <div class="qr-wrap">
+      <canvas id="qr" width="220" height="220"></canvas>
+      <div class="contador" id="contador">Expira en 60 s</div>
+      <div class="barra"><div id="barra"></div></div>
+      <p class="etiqueta">Muestra este código al torniquete. Se renueva cada minuto.</p>
+    </div>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Estado del acceso</h2>
+    <div class="fila"><span>Sede</span><strong>Ruta 5 Norte</strong></div>
+    <div class="fila"><span>Torniquetes</span><span class="chip ok">En línea</span></div>
+    <div class="fila"><span>Validación</span><span class="chip ok">Correcta</span></div>
+    <div class="fila"><span>Modo contingencia</span><span class="chip info">Inactivo</span></div>
+    <p class="etiqueta" style="margin-top:10px">Disponibilidad objetivo: 99 % en horario de funcionamiento.</p>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Último ingreso</h2>
+    <div class="fila"><span>Hoy, 08:12</span><span class="chip ok">Ingreso</span></div>
+    <div class="fila"><span>Ayer, 18:03</span><span class="chip ok">Salida</span></div>
+    <div class="fila"><span>Ayer, 08:05</span><span class="chip ok">Ingreso</span></div>
+    <p class="etiqueta" style="margin-top:10px">Meta: acceso en menos de 5 segundos.</p>
+  </section>
+
+  <section class="tarjeta">
+    <h2>Resumen de hoy</h2>
+    <div class="stat"><span>Accesos registrados</span><strong>1 248</strong></div>
+    <div class="stat"><span>Tiempo medio de acceso</span><strong>3,4 s</strong></div>
+    <div class="stat"><span>Incidentes abiertos</span><strong>0</strong></div>
+    <div class="stat"><span>Pases temporales emitidos</span><strong>17</strong></div>
+  </section>
+
+  <section class="tarjeta ancha banner">
+    <h2 style="color:#fff">Visitas externas</h2>
+    <p><small>Las visitas no usan QR. El guardia registra identidad, motivo, fecha y hora, y entrega un pase temporal.</small></p>
+    <div style="margin-top:12px"><button class="boton secundario" style="border-color:#fff;color:#fff">Ver pases del día</button></div>
+  </section>
+
+  <section class="tarjeta ancha">
+    <h2>Acciones</h2>
+    <div style="display:grid;gap:10px;grid-template-columns:1fr;">
+      <button class="boton">Generar nuevo código ahora</button>
+      <button class="boton secundario">Reportar problema de acceso</button>
+    </div>
+  </section>
+
+</main>
+
+<p class="nota">Maqueta de referencia del proyecto QRonos (PRY-QRONOS-2026-01). Los datos son ficticios.</p>
+
+<script>
+  // Generador de patrón QR de demostración (no es un QR válido).
+  // Cambia cada minuto; en el sistema real el código lo emite el backend.
+  const canvas = document.getElementById('qr');
+  const ctx = canvas.getContext('2d');
+  const N = 21, celda = canvas.width / N;
+
+  function semilla(texto) {
+    let h = 2166136261;
+    for (let i = 0; i < texto.length; i++) { h ^= texto.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function dibujarPatron(s) {
+    let r = s;
+    const bit = () => { r = (Math.imul(r, 1103515245) + 12345) >>> 0; return (r >> 16) & 1; };
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#03392b';
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const esquina = (x < 7 && y < 7) || (x > N - 8 && y < 7) || (x < 7 && y > N - 8);
+      if (esquina) continue;
+      if (bit()) ctx.fillRect(x * celda, y * celda, celda, celda);
+    }
+    // Marcadores de posición en las tres esquinas
+    [[0,0],[N-7,0],[0,N-7]].forEach(([x,y]) => {
+      ctx.fillStyle = '#03392b';
+      ctx.fillRect(x*celda, y*celda, 7*celda, 7*celda);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect((x+1)*celda, (y+1)*celda, 5*celda, 5*celda);
+      ctx.fillStyle = '#03392b';
+      ctx.fillRect((x+2)*celda, (y+2)*celda, 3*celda, 3*celda);
+    });
+  }
+
+  let inicio = Date.now();
+  let semillaActual = null;
+  function renovar() {
+    const minuto = Math.floor(Date.now() / 60000);
+    if (semillaActual !== minuto) {
+      semillaActual = minuto;
+      dibujarPatron(semilla('QRONOS-DEMO-' + minuto));
+    }
+  }
+  function tick() {
+    renovar();
+    const restante = 60 - Math.floor((Date.now() % 60000) / 1000);
+    document.getElementById('contador').textContent = 'Expira en ' + restante + ' s';
+    document.getElementById('barra').style.width = (restante / 60 * 100) + '%';
+  }
+  tick();
+  setInterval(tick, 250);
+
+  document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(x => x.classList.remove('activo'));
+    b.classList.add('activo');
+  }));
+</script>
+</body>
+</html>

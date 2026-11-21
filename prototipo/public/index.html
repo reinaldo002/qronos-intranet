@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QRonos · Panel de administración</title>
+<link rel="stylesheet" href="estilo.css">
+<style>
+  .grid-lector { display:grid; grid-template-columns:minmax(300px, 460px) 1fr; gap:16px; align-items:start; }
+  .col { display:flex; flex-direction:column; gap:16px; min-width:0; }
+  @media (max-width:900px) { .grid-lector { grid-template-columns:1fr; } }
+  .pestana[hidden] { display:none; }
+  .pestana > .card + .card { margin-top:16px; }
+
+  video { width:100%; border-radius:10px; background:#000; aspect-ratio:4/3; object-fit:cover; display:block; }
+  #estado { margin-top:12px; padding:12px 14px; border-radius:8px; font-size:15px; line-height:1.4; background:var(--neubg); color:var(--neu); border-left:5px solid var(--neubd); }
+  #estado.entrada { background:var(--okbg); color:var(--ok); border-left-color:var(--okbd); }
+  #estado.salida { background:var(--outbg); color:var(--out); border-left-color:var(--outbd); }
+  #estado.error { background:var(--errbg); color:var(--err); border-left-color:var(--errbd); }
+  #estado strong { display:block; font-size:18px; margin-bottom:2px; }
+  #estado.salida { --brillo:var(--outbd); }
+  .visor { position:relative; border-radius:10px; overflow:hidden; }
+  .visor::before { content:""; position:absolute; inset:12%; border:2px solid rgba(143,224,176,.75); border-radius:12px; pointer-events:none; box-shadow:0 0 0 9999px rgba(0,0,0,.18); }
+  .visor::after { content:""; position:absolute; left:12%; right:12%; top:4%; height:3px; border-radius:2px; background:linear-gradient(90deg, transparent, #8fe0b0, transparent); box-shadow:0 0 12px #8fe0b0; opacity:0; pointer-events:none; }
+  .visor.activo::after { opacity:1; animation:barrido 2.6s ease-in-out infinite; }
+  .manual { display:flex; gap:8px; margin-top:12px; }
+  .manual input { flex:1; }
+
+  .kpis { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; }
+  .kpi { background:var(--bg); border-radius:10px; padding:12px 14px; }
+  .kpi .v { font-size:28px; font-weight:700; color:var(--verde); line-height:1.1; }
+  .kpi .l { font-size:13px; color:var(--mut); margin-top:2px; }
+
+  .filtros { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-bottom:10px; }
+  .acciones { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 10px; }
+  #resumen { font-size:13px; color:var(--mut); margin:0 0 8px; }
+  #resumen b { color:var(--txt); }
+  .sin { color:var(--mut); font-style:italic; }
+  .pendiente { color:var(--out); font-weight:700; }
+
+  .form-persona { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end; margin-bottom:8px; }
+  .form-persona .chk { display:flex; align-items:center; gap:6px; padding-bottom:9px; font-size:14px; color:var(--txt); font-weight:400; }
+  .form-persona .chk input { width:auto; margin:0; }
+  .importar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0 4px; padding-top:10px; border-top:1px dashed var(--line); }
+  .importar input[type=file] { flex:1; min-width:180px; font-size:13px; color:var(--mut); }
+  #msgPersona, #msgImport, #msgBloqueo { font-size:13px; min-height:18px; margin:0 0 6px; }
+  #msgPersona.ok, #msgImport.ok, #msgBloqueo.ok { color:var(--okbd); } #msgPersona.err, #msgImport.err, #msgBloqueo.err { color:var(--err); }
+  td.just { max-width:320px; white-space:normal; }
+  #msgImport ul { margin:4px 0 0; padding-left:18px; }
+  .btn-x { background:transparent; border:1px solid var(--errbd); color:var(--err); border-radius:6px; cursor:pointer; padding:3px 9px; font-size:12px; font-family:inherit; }
+  .btn-x:hover { background:var(--errbg); }
+  .btn-m { background:transparent; border:1px solid var(--neubd); color:var(--neu); border-radius:6px; cursor:pointer; padding:3px 9px; font-size:12px; margin-right:4px; font-family:inherit; }
+  .btn-m:hover { background:var(--neubg); }
+  td.acc { white-space:nowrap; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="marca">QR<span>onos</span><small>Panel de administración · Santo Tomás, Sede Ruta 5</small></div>
+    <div class="avatar" title="Administrador">A</div>
+  </div>
+</header>
+<nav class="tabs">
+  <div class="tabs-in">
+    <a href="#lector" data-tab="lector">Lector</a>
+    <a href="#registros" data-tab="registros">Registros</a>
+    <a href="#personas" data-tab="personas">Personas</a>
+    <a href="estadisticas.html">Estadísticas</a>
+    <a href="generar.html">Generar QR</a>
+    <a class="ext" href="movil.html" target="_blank" rel="noopener">App móvil ↗</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<section class="pestana" id="tab-lector">
+  <p class="intro">Escanea el QR de la credencial con la cámara del PC. Solo entran las personas autorizadas (activas y con vigencia al día); los demás intentos quedan registrados como rechazados.</p>
+  <div class="grid-lector">
+    <section class="card">
+      <h2>Lector de QR <span class="chip" id="chipCamara">Iniciando</span></h2>
+      <div class="visor" id="visor"><video id="video" autoplay muted playsinline></video></div>
+      <div id="estado">Iniciando cámara…</div>
+      <div class="manual">
+        <input id="manual" type="text" placeholder="Validación manual: escribe el RUT (o pega el texto del QR)">
+        <button id="btnManual" class="btn" type="button">Enviar</button>
+      </div>
+      <p class="nota">El código de la app vence al minuto y sirve una sola vez. Si el mismo RUT se lee de nuevo en menos de 15 segundos, la lectura se ignora. La validación manual (contingencia) siempre acepta el RUT escrito por el guardia.</p>
+    </section>
+
+    <div class="col">
+      <section class="card">
+        <h2>Resumen de hoy <span class="chip info" id="horaResumen"></span></h2>
+        <div class="kpis">
+          <div class="kpi"><div class="v" id="kEntradas">—</div><div class="l">Entradas</div></div>
+          <div class="kpi"><div class="v" id="kDentro">—</div><div class="l">Dentro de la sede</div></div>
+          <div class="kpi"><div class="v" id="kPersonas">—</div><div class="l">Personas distintas</div></div>
+          <div class="kpi"><div class="v" id="kRechazos">—</div><div class="l">Intentos rechazados</div></div>
+        </div>
+      </section>
+      <section class="card">
+        <h2>Estado del sistema</h2>
+        <div class="fila"><span>Sede</span><strong>Ruta 5 · La Serena</strong></div>
+        <div class="fila"><span>Servidor</span><span class="chip" id="chipServidor">…</span></div>
+        <div class="fila"><span>Personas autorizadas</span><strong id="kAutorizadas">—</strong></div>
+        <div class="fila"><span>QR dinámico de la app</span><span class="chip ok" id="chipQr">…</span></div>
+        <div class="fila"><span>QR fijo con RUT (credencial)</span><span class="chip" id="chipEstatico">…</span></div>
+      </section>
+      <section class="card">
+        <h2>Últimas lecturas <a class="nota" href="#registros" data-ir="registros" style="margin:0">Ver todas</a></h2>
+        <div id="ultimas"><div class="vacio">Sin lecturas hoy.</div></div>
+      </section>
+    </div>
+  </div>
+</section>
+
+<section class="pestana" id="tab-registros" hidden>
+  <section class="card">
+    <h2>Registros</h2>
+    <div class="filtros" id="filtros">
+      <label>Desde<input type="date" id="fDesde"></label>
+      <label>Hasta<input type="date" id="fHasta"></label>
+      <label>RUT o nombre<input type="text" id="fBuscar" placeholder="Ej: 12345678 o Ana"></label>
+      <label>Tipo
+        <select id="fTipo"><option value="">Todos</option><option value="estudiante">Estudiantes</option><option value="profesor">Profesores</option><option value="auxiliar">Auxiliares</option><option value="guardia">Guardias</option><option value="sin_registrar">Sin registrar</option></select>
+      </label>
+      <label>Estado
+        <select id="fEstado"><option value="">Todos</option><option value="dentro">Sin salida (dentro)</option><option value="salio">Con salida</option></select>
+      </label>
+    </div>
+    <div class="acciones">
+      <button id="bFiltrar" class="btn" type="button">Filtrar</button>
+      <button id="bHoy" class="btn sec" type="button">Hoy</button>
+      <button id="bLimpiar" class="btn sec" type="button">Limpiar</button>
+      <a id="bCsv" class="btn sec" href="/api/accesos.csv" download>Exportar CSV</a>
+    </div>
+    <p id="resumen"></p>
+    <div class="tabla">
+      <table>
+        <thead><tr><th>RUT</th><th>Nombre</th><th>Tipo</th><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Permanencia</th></tr></thead>
+        <tbody id="filas"></tbody>
+      </table>
+    </div>
+    <div id="vacio" class="vacio" hidden>No hay registros con estos filtros.</div>
+  </section>
+
+  <section class="card">
+    <h2>Intentos rechazados</h2>
+    <p id="resumenRech" class="nota" style="margin:0 0 8px"></p>
+    <div class="tabla">
+      <table>
+        <thead><tr><th>Fecha</th><th>Hora</th><th>Leído</th><th>Nombre</th><th>Motivo</th></tr></thead>
+        <tbody id="rechazados"></tbody>
+      </table>
+    </div>
+    <div id="vacioRech" class="vacio" hidden>No hay intentos rechazados en estas fechas.</div>
+    <p class="nota">Usa las mismas fechas "Desde" y "Hasta" de los registros.</p>
+  </section>
+</section>
+
+<section class="pestana" id="tab-personas" hidden>
+  <section class="card">
+    <h2>Personas autorizadas</h2>
+    <div class="form-persona">
+      <label>RUT<input type="text" id="pRut" placeholder="12.345.678-5"></label>
+      <label>Nombre<input type="text" id="pNombre" maxlength="100" placeholder="Nombre y apellido"></label>
+      <label>Tipo
+        <select id="pTipo"><option value="">Elegir…</option><option value="estudiante">Estudiante</option><option value="profesor">Profesor</option><option value="auxiliar">Auxiliar</option></select>
+      </label>
+      <label>Vigencia hasta (opcional)<input type="date" id="pVigencia"></label>
+      <label class="chk"><input type="checkbox" id="pGuardia"> Es guardia</label>
+      <button id="bGuardar" class="btn" type="button">Guardar</button>
+    </div>
+    <p id="msgPersona"></p>
+
+    <div class="importar">
+      <input type="file" id="archivoCsv" accept=".csv,.txt,text/csv,text/plain">
+      <button id="bImportar" class="btn sec" type="button">Importar CSV</button>
+    </div>
+    <div id="msgImport"></div>
+    <p class="nota">Columnas del CSV: <b>rut; nombre; tipo; vigencia; guardia</b> (las dos últimas son opcionales). Ejemplo en <code>ejemplo_personas.csv</code>.</p>
+
+    <div class="filtros" style="margin-top:12px">
+      <label>Buscar<input type="text" id="qPersona" placeholder="RUT o nombre"></label>
+      <label>Tipo
+        <select id="qTipo"><option value="">Todos</option><option value="estudiante">Estudiantes</option><option value="profesor">Profesores</option><option value="auxiliar">Auxiliares</option></select>
+      </label>
+      <label>Estado
+        <select id="qEstado"><option value="">Todos</option><option value="activo">Pueden entrar</option><option value="inactivo">Desactivados</option><option value="vencido">Vigencia vencida</option></select>
+      </label>
+    </div>
+    <p id="resumenPersonas" class="nota" style="margin:0 0 8px"></p>
+    <div class="tabla">
+      <table>
+        <thead><tr><th>RUT</th><th>Nombre</th><th>Tipo</th><th>Vigencia</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="personas"></tbody>
+      </table>
+    </div>
+    <div id="vacioPersonas" class="vacio" hidden>La lista está vacía. Nadie podrá entrar hasta que agregues personas o importes un CSV.</div>
+  </section>
+
+  <section class="card" id="cardBloqueos">
+    <h2>Bloqueos de entrada</h2>
+    <p class="nota" style="margin:0 0 10px">Impide que una persona entre en ciertos días o en un horario. Sin horas, se bloquea el día completo; con horas, solo ese tramo en cada día del rango. La salida nunca se bloquea.</p>
+    <div class="form-persona">
+      <label>RUT<input type="text" id="bRut" placeholder="12.345.678-5"></label>
+      <label>Desde el día<input type="date" id="bDesde"></label>
+      <label>Hasta el día<input type="date" id="bHasta"></label>
+      <label>Desde la hora (opcional)<input type="time" id="bHoraDesde"></label>
+      <label>Hasta la hora (opcional)<input type="time" id="bHoraHasta"></label>
+    </div>
+    <div class="form-persona" style="grid-template-columns:1fr auto">
+      <label>Justificación (obligatoria)<input type="text" id="bJustificacion" maxlength="255" placeholder="Ej: Suspensión por resolución de Dirección N° 12"></label>
+      <button id="bBloquear" class="btn" type="button">Bloquear entrada</button>
+    </div>
+    <p id="msgBloqueo"></p>
+    <div class="filtros" style="margin-top:12px">
+      <label>Mostrar
+        <select id="bVista"><option value="">Activos y programados</option><option value="todos">Todos (incluye terminados)</option></select>
+      </label>
+    </div>
+    <div class="tabla">
+      <table>
+        <thead><tr><th>RUT</th><th>Nombre</th><th>Días</th><th>Horario</th><th>Justificación</th><th>Estado</th><th></th></tr></thead>
+        <tbody id="bloqueos"></tbody>
+      </table>
+    </div>
+    <div id="vacioBloqueos" class="vacio" hidden>No hay bloqueos.</div>
+  </section>
+</section>
+
+</div>
+
+<footer class="pie">Prototipo QRonos (PRY-QRONOS-2026-01) · Zentra Core · Instituto Profesional Santo Tomás, La Serena</footer>
+
+<script src="jsQR.js"></script>
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var video = $("video"), estado = $("estado"), filas = $("filas"), vacio = $("vacio");
+  var canvas = document.createElement("canvas");
+  var ctx = canvas.getContext("2d", { willReadFrequently: true });
+  var ultimoTexto = "", ultimoMs = 0;
+
+  function hoy() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+
+  function mostrar(clase, titulo, detalle) {
+    // Se reinicia la animación del aviso en cada lectura
+    estado.className = clase;
+    void estado.offsetWidth;
+    estado.classList.add(clase === "error" ? "sacudir" : clase === "entrada" || clase === "salida" ? "brillo" : "surgir");
+    estado.textContent = "";
+    var s = document.createElement("strong");
+    s.textContent = titulo;
+    estado.appendChild(s);
+    if (detalle) estado.appendChild(document.createTextNode(detalle));
+  }
+
+  function celda(texto, clase) {
+    var td = document.createElement("td");
+    if (clase) td.className = clase;
+    td.textContent = texto == null || texto === "" ? "—" : texto;
+    return td;
+  }
+
+  var ETIQUETA = { estudiante: "Estudiante", profesor: "Profesor", auxiliar: "Auxiliar" };
+
+  function chip(texto, clase) {
+    var sp = document.createElement("span");
+    sp.className = "chip" + (clase ? " " + clase : "");
+    sp.textContent = texto;
+    return sp;
+  }
+
+  function celdaTipo(tipo, esGuardia) {
+    var td = document.createElement("td");
+    if (!tipo) { td.textContent = "—"; return td; }
+    td.appendChild(chip(ETIQUETA[tipo] || tipo, tipo));
+    if (esGuardia) td.appendChild(chip("Guardia", "guardia"));
+    return td;
+  }
+
+  function fechaIso(f) { // "AAAA-MM-DD" -> "DD-MM-AAAA"
+    var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(f || "");
+    return m ? m[3] + "-" + m[2] + "-" + m[1] : f;
+  }
+
+  // ---------- filtros ----------
+  function paramsFiltro() {
+    var p = new URLSearchParams();
+    var map = { desde: "fDesde", hasta: "fHasta", buscar: "fBuscar", tipo: "fTipo", estado: "fEstado" };
+    Object.keys(map).forEach(function (k) {
+      var v = $(map[k]).value.trim();
+      if (v) p.set(k, v);
+    });
+    return p.toString();
+  }
+
+  function cargarTabla() {
+    var qs = paramsFiltro();
+    $("bCsv").href = "/api/accesos.csv" + (qs ? "?" + qs : "");
+    fetch("/api/accesos" + (qs ? "?" + qs : ""))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        filas.textContent = "";
+        var resumen = $("resumen");
+        resumen.textContent = "";
+        if (!d.ok) {
+          vacio.hidden = true;
+          resumen.textContent = d.error || "No se pudo cargar la lista";
+          return;
+        }
+        var lista = d.accesos || [];
+        vacio.hidden = lista.length > 0;
+        var b1 = document.createElement("b"); b1.textContent = d.total;
+        var b2 = document.createElement("b"); b2.textContent = d.dentro;
+        resumen.appendChild(b1);
+        resumen.appendChild(document.createTextNode(" registros · "));
+        resumen.appendChild(b2);
+        resumen.appendChild(document.createTextNode(" sin salida" + (d.mostrados < d.total ? " · se muestran los primeros " + d.mostrados : "")));
+        lista.forEach(function (a) {
+          var tr = document.createElement("tr");
+          tr.appendChild(celda(a.rut));
+          tr.appendChild(celda(a.nombre || "Sin registrar", a.nombre ? "" : "sin"));
+          tr.appendChild(celdaTipo(a.tipo, a.es_guardia));
+          tr.appendChild(celda(a.fecha));
+          tr.appendChild(celda(a.hora_entrada));
+          tr.appendChild(a.hora_salida ? celda(a.hora_salida) : celda("Sin salida", "pendiente"));
+          tr.appendChild(celda(a.permanencia));
+          filas.appendChild(tr);
+        });
+      })
+      .catch(function () { /* el servidor puede estar apagado */ });
+  }
+
+  // ---------- rechazados ----------
+  var MOTIVOS = {
+    no_autorizado: "No está en la lista de autorizados",
+    inactivo: "Persona desactivada",
+    vencido: "Vigencia vencida",
+    qr_no_reconocido: "El QR no trae un RUT válido",
+    qr_vencido: "Código QR vencido",
+    qr_usado: "Código QR ya utilizado",
+    qr_invalido: "Código QR adulterado o no emitido por QRonos",
+    qr_estatico: "QR fijo no permitido: use la app",
+    bloqueado: "Entrada bloqueada por la Administración"
+  };
+  function motivoTexto(m) { return MOTIVOS[m] || m || ""; }
+
+  function cargarRechazados() {
+    var p = new URLSearchParams();
+    if ($("fDesde").value) p.set("desde", $("fDesde").value);
+    if ($("fHasta").value) p.set("hasta", $("fHasta").value);
+    var qs = p.toString();
+    fetch("/api/rechazados" + (qs ? "?" + qs : ""))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var tb = $("rechazados");
+        tb.textContent = "";
+        if (!d.ok) { $("resumenRech").textContent = d.error || ""; $("vacioRech").hidden = true; return; }
+        var lista = d.rechazados || [];
+        $("vacioRech").hidden = lista.length > 0;
+        $("resumenRech").textContent = d.total + " intentos rechazados" + (d.mostrados < d.total ? " · se muestran los primeros " + d.mostrados : "");
+        lista.forEach(function (x) {
+          var tr = document.createElement("tr");
+          tr.appendChild(celda(x.fecha));
+          tr.appendChild(celda(x.hora));
+          tr.appendChild(celda(x.rut_leido));
+          tr.appendChild(celda(x.nombre));
+          var td = document.createElement("td");
+          td.appendChild(chip(x.motivo_texto || motivoTexto(x.motivo), "rechazo"));
+          tr.appendChild(td);
+          tb.appendChild(tr);
+        });
+      })
+      .catch(function () { /* el servidor puede estar apagado */ });
+  }
+
+  // ---------- lectura ----------
+  function enviar(texto, manual) {
+    fetch("/api/escaneo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto: texto, manual: !!manual })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var tipoTxt = d.tipo ? " (" + (ETIQUETA[d.tipo] || d.tipo) + (d.es_guardia ? ", guardia" : "") + ")" : "";
+        var quien = d.nombre ? d.nombre + tipoTxt + " · " + d.rut : d.rut;
+        if (d.rechazado && d.motivo === "bloqueado") {
+          mostrar("error", "ENTRADA BLOQUEADA", (d.nombre ? d.nombre + " · " : "") + d.rut + " · Hasta el " + d.bloqueo_hasta +
+            (d.bloqueo_horario ? " (" + d.bloqueo_horario + ")" : "") + " · Justificación: " + d.justificacion);
+        } else if (d.rechazado) {
+          var detalle = d.rut ? (d.nombre ? d.nombre + " · " : "") + d.rut : "";
+          mostrar("error", d.rut ? "ACCESO NO AUTORIZADO" : "QR no válido", (d.rut ? motivoTexto(d.motivo) + (detalle ? " · " + detalle : "") : d.error));
+        } else if (!d.ok) {
+          mostrar("error", "Lectura no registrada", d.error);
+        } else if (d.accion === "IGNORADO") {
+          mostrar("", "Lectura repetida", quien + " · " + d.mensaje);
+        } else if (d.accion === "ENTRADA") {
+          mostrar("entrada", "ENTRADA registrada", quien + " · " + d.fecha + " " + d.hora);
+        } else {
+          mostrar("salida", "SALIDA registrada", quien + " · " + d.fecha + " " + d.hora);
+        }
+        recargarRegistros();
+      })
+      .catch(function () {
+        mostrar("error", "Sin conexión con el servidor", "Revisa que node server.js esté corriendo.");
+      });
+  }
+
+  function leerFrame() {
+    if (video.readyState === video.HAVE_ENOUGH_DATA && video.videoWidth) {
+      var escala = Math.min(1, 640 / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * escala);
+      canvas.height = Math.round(video.videoHeight * escala);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      var img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      var code = jsQR(img.data, img.width, img.height, { inversionAttempts: "dontInvert" });
+      if (code && code.data) {
+        var ahora = Date.now();
+        if (code.data !== ultimoTexto || ahora - ultimoMs > 4000) {
+          ultimoTexto = code.data;
+          ultimoMs = ahora;
+          enviar(code.data);
+        }
+      }
+    }
+    setTimeout(leerFrame, 150);
+  }
+
+  function iniciarCamara() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      mostrar("error", "Cámara no disponible", "Abre la página desde http://localhost:3000 en Chrome o Edge.");
+      return;
+    }
+    navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+      .then(function (stream) {
+        video.srcObject = stream;
+        return video.play();
+      })
+      .then(function () {
+        mostrar("", "Cámara lista", "Muestra el QR de la credencial o de la app móvil frente a la cámara.");
+        $("chipCamara").className = "chip ok"; $("chipCamara").textContent = "Cámara activa";
+        $("visor").classList.add("activo");
+        leerFrame();
+      })
+      .catch(function (e) {
+        mostrar("error", "No se pudo abrir la cámara", e.name + ": permite el acceso a la cámara en el navegador.");
+        $("chipCamara").className = "chip alerta"; $("chipCamara").textContent = "Sin cámara";
+      });
+  }
+
+  // ---------- personas ----------
+  function mensajePersona(clase, texto) {
+    var m = $("msgPersona");
+    m.className = clase;
+    m.textContent = texto;
+  }
+
+  function botonMini(texto, clase, fn) {
+    var b = document.createElement("button");
+    b.type = "button"; b.className = clase; b.textContent = texto;
+    b.addEventListener("click", fn);
+    return b;
+  }
+
+  function cargarPersonas() {
+    var p = new URLSearchParams();
+    if ($("qPersona").value.trim()) p.set("q", $("qPersona").value.trim());
+    if ($("qTipo").value) p.set("tipo", $("qTipo").value);
+    if ($("qEstado").value) p.set("estado", $("qEstado").value);
+    var qs = p.toString();
+    fetch("/api/personas" + (qs ? "?" + qs : ""))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var tb = $("personas");
+        tb.textContent = "";
+        var lista = d.personas || [];
+        $("vacioPersonas").hidden = lista.length > 0;
+        $("vacioPersonas").textContent = d.total > 0
+          ? "Ninguna persona coincide con la búsqueda."
+          : "La lista está vacía. Nadie podrá entrar hasta que agregues personas o importes un CSV.";
+        $("resumenPersonas").textContent = d.ok ? lista.length + " de " + d.total + " personas" : "";
+        lista.forEach(function (p) {
+          var tr = document.createElement("tr");
+          tr.appendChild(celda(p.rut));
+          tr.appendChild(celda(p.nombre));
+          tr.appendChild(celdaTipo(p.tipo, p.es_guardia));
+          tr.appendChild(celda(p.vigencia_hasta ? fechaIso(p.vigencia_hasta) : "Sin límite"));
+          var te = document.createElement("td");
+          if (!p.activo) te.appendChild(chip("Desactivada", "inactivo"));
+          else if (p.vencida) te.appendChild(chip("Vencida", "vencido"));
+          else if (p.bloqueada) te.appendChild(chip("Bloqueada ahora", "alerta"));
+          else te.appendChild(chip("Puede entrar", "vigente"));
+          tr.appendChild(te);
+          var td = document.createElement("td");
+          td.className = "acc";
+          td.appendChild(botonMini("Editar", "btn-m", function () {
+            $("pRut").value = p.rut; $("pNombre").value = p.nombre; $("pTipo").value = p.tipo;
+            $("pVigencia").value = p.vigencia_hasta ? p.vigencia_hasta.slice(0, 10) : "";
+            $("pGuardia").checked = p.es_guardia;
+            mensajePersona("", "Editando a " + p.nombre + ". Cambia lo que necesites y pulsa Guardar.");
+            $("pNombre").focus();
+          }));
+          td.appendChild(botonMini(p.activo ? "Desactivar" : "Activar", "btn-m", function () {
+            fetch("/api/personas/" + encodeURIComponent(p.rut) + "/estado", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ activo: !p.activo })
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (x) { if (!x.ok) mensajePersona("err", x.error); cargarPersonas(); });
+          }));
+          td.appendChild(botonMini("Bloquear", "btn-m", function () {
+            $("bRut").value = p.rut;
+            if (!$("bDesde").value) $("bDesde").value = hoy();
+            mensajeBloqueo("", "Bloqueo para " + p.nombre + ": elige los días, el horario (opcional) y escribe la justificación.");
+            $("cardBloqueos").scrollIntoView({ behavior: "smooth" });
+            $("bJustificacion").focus();
+          }));
+          td.appendChild(botonMini("Quitar", "btn-x", function () {
+            if (!window.confirm("¿Quitar a " + p.nombre + " (" + p.rut + ") de la lista? Ya no podrá entrar. Sus registros de acceso se conservan.")) return;
+            fetch("/api/personas/" + encodeURIComponent(p.rut), { method: "DELETE" })
+              .then(function (r) { return r.json(); })
+              .then(function () { cargarPersonas(); cargarTabla(); });
+          }));
+          tr.appendChild(td);
+          tb.appendChild(tr);
+        });
+      })
+      .catch(function () { /* el servidor puede estar apagado */ });
+  }
+
+  function guardarPersona() {
+    fetch("/api/personas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rut: $("pRut").value, nombre: $("pNombre").value, tipo: $("pTipo").value,
+        vigencia_hasta: $("pVigencia").value, es_guardia: $("pGuardia").checked
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { mensajePersona("err", d.error); return; }
+        mensajePersona("ok", "Guardado: " + d.persona.nombre + " (" + d.persona.rut + ")");
+        $("pRut").value = ""; $("pNombre").value = ""; $("pTipo").value = ""; $("pVigencia").value = ""; $("pGuardia").checked = false;
+        cargarPersonas();
+        cargarTabla();
+      })
+      .catch(function () { mensajePersona("err", "Sin conexión con el servidor"); });
+  }
+
+  // ---------- bloqueos ----------
+  function mensajeBloqueo(clase, texto) {
+    var m = $("msgBloqueo");
+    m.className = clase;
+    m.textContent = texto;
+  }
+
+  var ESTADO_BLOQUEO = { activo: ["Activo ahora", "alerta"], programado: ["Programado", "info"], terminado: ["Terminado", ""] };
+
+  function cargarBloqueos() {
+    var vista = $("bVista").value;
+    fetch("/api/bloqueos" + (vista ? "?vista=" + vista : ""))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var tb = $("bloqueos");
+        tb.textContent = "";
+        var lista = (d && d.bloqueos) || [];
+        $("vacioBloqueos").hidden = lista.length > 0;
+        lista.forEach(function (b) {
+          var tr = document.createElement("tr");
+          tr.appendChild(celda(b.rut));
+          tr.appendChild(celda(b.nombre || "Ya no está en la lista", b.nombre ? "" : "sin"));
+          tr.appendChild(celda(b.fecha_desde === b.fecha_hasta ? fechaIso(b.fecha_desde) : fechaIso(b.fecha_desde) + " al " + fechaIso(b.fecha_hasta)));
+          tr.appendChild(celda(b.hora_desde ? b.hora_desde + " a " + b.hora_hasta : "Todo el día"));
+          tr.appendChild(celda(b.justificacion, "just"));
+          var te = document.createElement("td");
+          var e = ESTADO_BLOQUEO[b.estado] || [b.estado, ""];
+          te.appendChild(chip(e[0], e[1]));
+          tr.appendChild(te);
+          var td = document.createElement("td");
+          td.className = "acc";
+          td.appendChild(botonMini("Quitar", "btn-x", function () {
+            if (!window.confirm("¿Quitar el bloqueo de " + (b.nombre || b.rut) + "? Podrá volver a entrar.")) return;
+            fetch("/api/bloqueos/" + b.id, { method: "DELETE" })
+              .then(function (r) { return r.json(); })
+              .then(function () { cargarBloqueos(); cargarPersonas(); });
+          }));
+          tr.appendChild(td);
+          tb.appendChild(tr);
+        });
+      })
+      .catch(function () { /* el servidor puede estar apagado */ });
+  }
+
+  function guardarBloqueo() {
+    fetch("/api/bloqueos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rut: $("bRut").value, fecha_desde: $("bDesde").value, fecha_hasta: $("bHasta").value,
+        hora_desde: $("bHoraDesde").value, hora_hasta: $("bHoraHasta").value, justificacion: $("bJustificacion").value
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { mensajeBloqueo("err", d.error); return; }
+        var b = d.bloqueo;
+        mensajeBloqueo("ok", "Bloqueada la entrada de " + b.nombre + " (" + b.rut + ") " +
+          (b.fecha_desde === b.fecha_hasta ? "el " + fechaIso(b.fecha_desde) : "del " + fechaIso(b.fecha_desde) + " al " + fechaIso(b.fecha_hasta)) +
+          (b.hora_desde ? ", de " + b.hora_desde + " a " + b.hora_hasta : ", todo el día") + ".");
+        ["bRut", "bDesde", "bHasta", "bHoraDesde", "bHoraHasta", "bJustificacion"].forEach(function (id) { $(id).value = ""; });
+        cargarBloqueos();
+        cargarPersonas();
+      })
+      .catch(function () { mensajeBloqueo("err", "Sin conexión con el servidor"); });
+  }
+
+  function importarCsv() {
+    var m = $("msgImport");
+    var f = $("archivoCsv").files && $("archivoCsv").files[0];
+    m.className = ""; m.textContent = "";
+    if (!f) { m.className = "err"; m.textContent = "Elige primero un archivo CSV."; return; }
+    if (f.size > 2 * 1024 * 1024) { m.className = "err"; m.textContent = "El archivo pesa más de 2 MB."; return; }
+    var lector = new FileReader();
+    lector.onload = function () {
+      fetch("/api/personas/importar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ csv: lector.result })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (!d.ok) { m.className = "err"; m.textContent = d.error; return; }
+          m.className = d.con_error ? "err" : "ok";
+          m.textContent = d.nuevas + " nuevas, " + d.actualizadas + " actualizadas, " + d.sin_cambios + " sin cambios, " + d.con_error + " con error (de " + d.leidas + " filas).";
+          if (d.errores && d.errores.length) {
+            var ul = document.createElement("ul");
+            d.errores.forEach(function (e) {
+              var li = document.createElement("li");
+              li.textContent = "Línea " + e.linea + ": " + e.motivo;
+              ul.appendChild(li);
+            });
+            m.appendChild(ul);
+          }
+          $("archivoCsv").value = "";
+          cargarPersonas();
+          cargarTabla();
+        })
+        .catch(function () { m.className = "err"; m.textContent = "Sin conexión con el servidor"; });
+    };
+    lector.onerror = function () { m.className = "err"; m.textContent = "No se pudo leer el archivo."; };
+    lector.readAsText(f, "UTF-8");
+  }
+
+  // ---------- eventos ----------
+  $("btnManual").addEventListener("click", function () {
+    var t = $("manual").value.trim();
+    if (t) enviar(t, true);
+  });
+  $("manual").addEventListener("keydown", function (e) { if (e.key === "Enter") $("btnManual").click(); });
+
+  function recargarRegistros() { cargarTabla(); cargarRechazados(); if (window.cargarResumen) window.cargarResumen(); }
+  $("bFiltrar").addEventListener("click", recargarRegistros);
+  ["fDesde", "fHasta", "fTipo", "fEstado"].forEach(function (id) { $(id).addEventListener("change", recargarRegistros); });
+  $("fBuscar").addEventListener("keydown", function (e) { if (e.key === "Enter") recargarRegistros(); });
+  $("bHoy").addEventListener("click", function () { $("fDesde").value = hoy(); $("fHasta").value = hoy(); recargarRegistros(); });
+  $("bLimpiar").addEventListener("click", function () {
+    $("fDesde").value = hoy(); $("fHasta").value = hoy();
+    $("fBuscar").value = ""; $("fTipo").value = ""; $("fEstado").value = "";
+    recargarRegistros();
+  });
+  $("bGuardar").addEventListener("click", guardarPersona);
+  ["pRut", "pNombre"].forEach(function (id) { $(id).addEventListener("keydown", function (e) { if (e.key === "Enter") guardarPersona(); }); });
+  $("bImportar").addEventListener("click", importarCsv);
+  $("qPersona").addEventListener("keydown", function (e) { if (e.key === "Enter") cargarPersonas(); });
+  ["qTipo", "qEstado"].forEach(function (id) { $(id).addEventListener("change", cargarPersonas); });
+  $("bBloquear").addEventListener("click", guardarBloqueo);
+  $("bJustificacion").addEventListener("keydown", function (e) { if (e.key === "Enter") guardarBloqueo(); });
+  $("bVista").addEventListener("change", cargarBloqueos);
+
+  $("fDesde").value = hoy();
+  $("fHasta").value = hoy();
+  recargarRegistros();
+  cargarPersonas();
+  cargarBloqueos();
+  setInterval(recargarRegistros, 10000);
+  iniciarCamara();
+})();
+</script>
+<script>
+// ---------- Pestañas y resumen del panel ----------
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var TABS = ["lector", "registros", "personas"];
+  function mostrarTab(t) {
+    if (TABS.indexOf(t) < 0) t = "lector";
+    TABS.forEach(function (x) { $("tab-" + x).hidden = x !== t; });
+    document.querySelectorAll("[data-tab]").forEach(function (a) { a.classList.toggle("activo", a.getAttribute("data-tab") === t); });
+  }
+  window.addEventListener("hashchange", function () { mostrarTab(location.hash.slice(1)); });
+  mostrarTab(location.hash.slice(1));
+
+  function hoy() {
+    var d = new Date();
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function servidor(ok) {
+    var c = $("chipServidor");
+    c.className = "chip " + (ok ? "ok" : "alerta");
+    c.textContent = ok ? "En línea" : "Sin conexión";
+  }
+  function fila(izq, der, clase) {
+    var d = document.createElement("div"); d.className = "fila";
+    var a = document.createElement("span"); a.textContent = izq;
+    var b = document.createElement("span"); b.className = "chip " + clase; b.textContent = der;
+    d.appendChild(a); d.appendChild(b);
+    return d;
+  }
+
+  // Cambia un número y lo hace "latir" si subió o bajó
+  function kpi(id, valor) {
+    var e = $(id), v = String(valor);
+    if (e.textContent === v) return;
+    var primera = e.textContent === "—";
+    e.textContent = v;
+    if (primera) return;
+    e.classList.remove("latido"); void e.offsetWidth; e.classList.add("latido");
+  }
+  var vistas = null; // lecturas ya mostradas, para resaltar solo las nuevas
+
+  window.cargarResumen = function () {
+    var h = hoy();
+    fetch("/api/estadisticas?desde=" + h + "&hasta=" + h)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        servidor(d.ok);
+        if (!d.ok) return;
+        kpi("kEntradas", d.resumen.entradas);
+        kpi("kDentro", d.resumen.dentroAhora);
+        kpi("kPersonas", d.resumen.personas);
+        kpi("kRechazos", d.resumen.rechazos);
+        $("horaResumen").textContent = "Actualizado " + new Date().toLocaleTimeString("es-CL", { hour: "2-digit", minute: "2-digit" });
+      })
+      .catch(function () { servidor(false); });
+    fetch("/api/personas?estado=activo")
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.ok) $("kAutorizadas").textContent = d.personas.length + " pueden entrar (de " + d.total + ")"; })
+      .catch(function () {});
+    fetch("/api/accesos?limite=6")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var c = $("ultimas"); c.textContent = "";
+        var lista = (d && d.accesos) || [];
+        if (!lista.length) { var v = document.createElement("div"); v.className = "vacio"; v.textContent = "Sin lecturas hoy."; c.appendChild(v); return; }
+        var nuevas = {};
+        lista.forEach(function (a) {
+          var quien = (a.nombre || a.rut), f;
+          if (a.hora_salida) f = fila(quien + " · " + a.hora_salida.slice(0, 5), "Salida", "info");
+          else f = fila(quien + " · " + a.hora_entrada.slice(0, 5), "Ingreso", "ok");
+          var clave = a.rut + "|" + a.fecha + "|" + a.hora_entrada + "|" + (a.hora_salida || "");
+          nuevas[clave] = 1;
+          if (vistas && !vistas[clave]) f.classList.add("nueva");
+          c.appendChild(f);
+        });
+        vistas = nuevas;
+      })
+      .catch(function () {});
+  };
+  document.querySelectorAll("[data-ir]").forEach(function (a) {
+    a.addEventListener("click", function () { mostrarTab(a.getAttribute("data-ir")); });
+  });
+  fetch("/api/config")
+    .then(function (r) { return r.json(); })
+    .then(function (c) {
+      $("chipQr").textContent = "Activo · vence en " + c.qrSegundos + " s";
+      $("chipEstatico").className = "chip " + (c.qrEstatico ? "info" : "ok");
+      $("chipEstatico").textContent = c.qrEstatico ? "Aceptado (transición)" : "Rechazado";
+    })
+    .catch(function () {});
+  window.cargarResumen();
+})();
+</script>
+</body>
+</html>

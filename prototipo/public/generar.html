@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QRonos · Generar QR de prueba</title>
+<link rel="stylesheet" href="estilo.css">
+<style>
+  .grid-gen { display:grid; grid-template-columns:1fr minmax(300px, 420px); gap:16px; align-items:start; }
+  @media (max-width:800px) { .grid-gen { grid-template-columns:1fr; } }
+  .fila-in { display:flex; gap:8px; margin-bottom:10px; }
+  .fila-in input { flex:1; }
+  .lista { max-height:460px; overflow-y:auto; border-top:1px solid var(--line2); }
+  .persona { display:flex; justify-content:space-between; gap:8px; align-items:center; width:100%; padding:10px 8px; border:0; border-bottom:1px solid var(--line2); background:transparent; color:var(--txt); text-align:left; cursor:pointer; font:inherit; font-size:14px; }
+  .persona { transition:background-color .2s ease, padding-left .2s ease; }
+  .persona:hover, .persona.sel { background:var(--fila); }
+  .persona.sel { padding-left:14px; box-shadow:inset 3px 0 0 var(--verde); }
+  .persona small { display:block; color:var(--mut); font-size:12px; }
+  #qrBox { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px; display:flex; justify-content:center; }
+  #qr { width:100%; max-width:320px; height:auto; image-rendering:pixelated; }
+  #info { margin:12px 0; font-size:15px; line-height:1.5; }
+  #info b { font-size:18px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="marca">QR<span>onos</span><small>Panel de administración · Santo Tomás, Sede Ruta 5</small></div>
+    <div class="avatar" title="Administrador">A</div>
+  </div>
+</header>
+<nav class="tabs">
+  <div class="tabs-in">
+    <a href="/#lector">Lector</a>
+    <a href="/#registros">Registros</a>
+    <a href="/#personas">Personas</a>
+    <a href="estadisticas.html">Estadísticas</a>
+    <a href="generar.html" class="activo">Generar QR</a>
+    <a class="ext" href="movil.html" target="_blank" rel="noopener">App móvil ↗</a>
+  </div>
+</nav>
+
+<div class="wrap">
+<p class="intro">Elige una persona o escribe un RUT y muestra el QR a la cámara del lector (desde otra pantalla o desde el celular). El QR trae solo el RUT, igual que la credencial. Solo sirve para pruebas: el QR dinámico de la app es la etapa 3.</p>
+
+<div class="grid-gen">
+  <section class="card">
+    <h2>Personas autorizadas</h2>
+    <div class="fila-in"><input id="buscar" type="text" placeholder="Buscar por RUT o nombre"></div>
+    <div id="lista" class="lista"><div class="vacio">Cargando…</div></div>
+    <h2 style="margin-top:16px">Texto libre</h2>
+    <div class="fila-in">
+      <input id="libre" type="text" placeholder="Cualquier RUT o texto (para probar rechazos)">
+      <button id="btnLibre" class="btn" type="button">Generar</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Código QR</h2>
+    <div id="qrBox"><canvas id="qr" width="340" height="340"></canvas></div>
+    <div id="info"><span class="vacio">Elige una persona.</span></div>
+    <button id="btnPng" class="btn ancho" type="button" disabled>Descargar PNG</button>
+    <p class="nota">Sube el brillo de la pantalla y evita reflejos para que la cámara lo lea.</p>
+  </section>
+</div>
+</div>
+
+<script src="qrcode.min.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let personas = [];
+  let actual = null;
+
+  function estadoDe(p) {
+    if (!p.activo) return "inactivo";
+    if (p.vencida) return "vencido";
+    return "vigente";
+  }
+
+  function dibujar(texto) {
+    const qr = qrcode(0, "M");
+    qr.addData(texto);
+    qr.make();
+    const n = qr.getModuleCount(), margen = 4, escala = 10;
+    const lado = (n + margen * 2) * escala;
+    const c = $("qr");
+    c.width = c.height = lado;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, lado, lado);
+    ctx.fillStyle = "#000";
+    for (let r = 0; r < n; r++)
+      for (let k = 0; k < n; k++)
+        if (qr.isDark(r, k)) ctx.fillRect((k + margen) * escala, (r + margen) * escala, escala, escala);
+    $("btnPng").disabled = false;
+    c.classList.remove("surgir"); void c.offsetWidth; c.classList.add("surgir");
+  }
+
+  function texto(el, t) { const s = document.createElement(el); s.textContent = t; return s; }
+
+  function mostrarPersona(p) {
+    actual = p.rut;
+    dibujar(p.rut);
+    const est = estadoDe(p);
+    const info = $("info"); info.replaceChildren();
+    info.append(texto("b", p.nombre), document.createElement("br"),
+      "RUT " + p.rut + " · " + p.tipo + (p.es_guardia ? " · guardia" : ""), document.createElement("br"));
+    const chip = texto("span", est === "vigente" ? "Puede entrar" : (est === "inactivo" ? "Desactivada: será rechazada" : "Vigencia vencida: será rechazada"));
+    chip.className = "chip " + est;
+    info.append(chip);
+    pintarLista();
+  }
+
+  function mostrarLibre() {
+    const t = $("libre").value.trim();
+    if (!t) return;
+    actual = t;
+    dibujar(t);
+    const info = $("info"); info.replaceChildren();
+    info.append(texto("b", "Texto libre"), document.createElement("br"), t);
+    pintarLista();
+  }
+
+  function pintarLista() {
+    const q = $("buscar").value.trim().toLowerCase();
+    const cont = $("lista"); cont.replaceChildren();
+    const vis = personas.filter(p => !q || p.rut.toLowerCase().includes(q) || p.nombre.toLowerCase().includes(q));
+    if (!personas.length) { cont.append(Object.assign(texto("div", "La lista está vacía. Importa ejemplo_personas.csv en la página del lector."), { className: "vacio" })); return; }
+    if (!vis.length) { cont.append(Object.assign(texto("div", "Sin resultados."), { className: "vacio" })); return; }
+    for (const p of vis) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "persona" + (actual === p.rut ? " sel" : "");
+      const izq = document.createElement("span");
+      izq.append(p.nombre, texto("small", p.rut + " · " + p.tipo));
+      const est = estadoDe(p);
+      const chip = texto("span", est); chip.className = "chip " + est;
+      b.append(izq, chip);
+      b.addEventListener("click", () => mostrarPersona(p));
+      cont.append(b);
+    }
+  }
+
+  function cargar() {
+    fetch("/api/personas")
+      .then(r => r.json())
+      .then(d => { personas = d.ok ? d.personas : []; pintarLista(); })
+      .catch(() => { $("lista").replaceChildren(Object.assign(texto("div", "No se pudo cargar la lista. ¿Está corriendo el servidor?"), { className: "vacio" })); });
+  }
+
+  $("buscar").addEventListener("input", pintarLista);
+  $("btnLibre").addEventListener("click", mostrarLibre);
+  $("libre").addEventListener("keydown", e => { if (e.key === "Enter") mostrarLibre(); });
+  $("btnPng").addEventListener("click", () => {
+    const a = document.createElement("a");
+    a.href = $("qr").toDataURL("image/png");
+    a.download = "qr_" + String(actual || "prueba").replace(/[^\w-]/g, "_") + ".png";
+    a.click();
+  });
+  cargar();
+</script>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#03392b">
+<title>QRonos · Mi acceso</title>
+<link rel="stylesheet" href="estilo.css">
+<style>
+  main { padding:16px; display:grid; gap:16px; grid-template-columns:1fr; max-width:1100px; margin:0 auto; }
+  @media (min-width:760px) { main { grid-template-columns:1fr 1fr; } .ancha { grid-column:span 2; } }
+  main[hidden] { display:none; }
+  .etiqueta { font-size:12px; color:var(--mut); font-weight:400; margin:0; }
+  .qr-wrap { display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+  #qr { background:#fff; border:1px solid var(--line); border-radius:8px; width:220px; height:220px; image-rendering:pixelated; transition:opacity .4s ease, box-shadow .4s ease; }
+  #qr.surgir { box-shadow:0 0 0 4px var(--verde-cl); }
+  .contador.poco { color:var(--outbd); }
+  .barra.poco div { background:var(--outbd); }
+  .stat strong { display:inline-block; }
+  .quien { font-size:16px; font-weight:700; }
+  .quien small { display:block; font-size:13px; font-weight:400; color:var(--mut); }
+  .contador { font-size:14px; color:var(--verde); font-weight:700; }
+  .barra { width:100%; height:6px; background:var(--line); border-radius:4px; overflow:hidden; }
+  .barra div { height:100%; width:100%; background:var(--verde); transition:width 1s linear, background-color .4s ease; }
+  .aviso { width:100%; padding:10px 12px; border-radius:8px; background:var(--errbg); color:var(--err); font-size:14px; text-align:left; }
+  .banner { background:linear-gradient(90deg, #1a9bc4, #0f7aa0); color:#fff; }
+  .banner h2 { color:#fff; }
+  .banner small { opacity:.92; font-size:14px; }
+  .acciones { display:grid; gap:10px; grid-template-columns:1fr; }
+  @media (min-width:760px) { .acciones { grid-template-columns:repeat(3, 1fr); } }
+  .login { max-width:420px; margin:24px auto; grid-template-columns:1fr !important; }
+  .login .card { display:grid; gap:12px; }
+  #msgLogin { color:var(--err); font-size:14px; min-height:18px; margin:0; }
+  .ayuda p { font-size:14px; line-height:1.5; margin:0 0 10px; }
+  .ayuda b { color:var(--txt); }
+  .pie-nota { text-align:center; font-size:12px; color:var(--mut); padding:12px 16px 28px; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <div class="marca">QR<span>onos</span></div>
+    <button class="avatar" id="avatar" type="button" title="Cambiar de usuario" hidden>?</button>
+  </div>
+</header>
+
+<nav class="tabs" id="nav" hidden>
+  <div class="tabs-in">
+    <button type="button" data-tab="inicio" class="activo">Inicio</button>
+    <button type="button" data-tab="historial">Historial</button>
+    <button type="button" data-tab="ayuda">Ayuda</button>
+  </div>
+</nav>
+
+<!-- Ingreso -->
+<main class="login" id="vLogin" hidden>
+  <section class="card">
+    <h2>Ingresa con tu RUT</h2>
+    <label>RUT<input type="text" id="inRut" inputmode="text" autocomplete="off" placeholder="12.345.678-5"></label>
+    <button class="btn ancho" id="btnEntrar" type="button">Entrar</button>
+    <p id="msgLogin"></p>
+    <p class="etiqueta">Prototipo: basta con el RUT de una persona autorizada. En el sistema final se ingresará con la cuenta institucional.</p>
+  </section>
+</main>
+
+<!-- Inicio -->
+<main id="vInicio" hidden>
+  <section class="card">
+    <h2>Mi credencial <span class="chip" id="chipEstado">…</span></h2>
+    <div class="qr-wrap">
+      <canvas id="qr" width="220" height="220"></canvas>
+      <div class="quien" id="quien"></div>
+      <div id="aviso" class="aviso" hidden></div>
+      <div class="contador" id="contador">Generando código…</div>
+      <div class="barra"><div id="barra"></div></div>
+      <p class="etiqueta">Muestra este código al lector del torniquete. Se renueva cada minuto y sirve una sola vez: una foto o captura deja de funcionar al vencer.</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Estado del acceso</h2>
+    <div class="fila"><span>Sede</span><strong>Ruta 5 · La Serena</strong></div>
+    <div class="fila"><span>Servidor</span><span class="chip" id="chipServidor">…</span></div>
+    <div class="fila"><span>Mi acceso</span><span class="chip" id="chipAcceso">…</span></div>
+    <div class="fila"><span>Vigencia</span><strong id="vigencia">—</strong></div>
+    <div class="fila"><span>Ahora</span><span class="chip" id="chipAhora">…</span></div>
+    <p class="etiqueta" style="margin-top:10px">Disponibilidad objetivo: 99 % en horario de funcionamiento.</p>
+  </section>
+
+  <section class="card">
+    <h2>Último ingreso</h2>
+    <div id="ultimos"></div>
+    <p class="etiqueta" style="margin-top:10px">Meta: acceso en menos de 5 segundos.</p>
+  </section>
+
+  <section class="card">
+    <h2>Resumen de hoy en la sede</h2>
+    <div class="stat"><span>Accesos registrados</span><strong id="sEntradas">—</strong></div>
+    <div class="stat"><span>Personas dentro</span><strong id="sDentro">—</strong></div>
+    <div class="stat"><span>Intentos rechazados</span><strong id="sRechazos">—</strong></div>
+  </section>
+
+  <section class="card ancha banner">
+    <h2>Visitas externas</h2>
+    <p style="margin:0"><small>Las visitas no usan QR. El guardia registra identidad, motivo, fecha y hora, y entrega un pase temporal.</small></p>
+  </section>
+
+  <section class="card ancha">
+    <h2>Acciones</h2>
+    <div class="acciones">
+      <button class="btn ancho" id="btnNuevo" type="button">Generar nuevo código ahora</button>
+      <button class="btn sec ancho" id="btnActualizar" type="button">Actualizar mis datos</button>
+      <button class="btn sec ancho" id="btnSalir" type="button">Cambiar de usuario</button>
+    </div>
+  </section>
+</main>
+
+<!-- Historial -->
+<main id="vHistorial" hidden>
+  <section class="card ancha">
+    <h2>Mis accesos <span class="etiqueta">Últimas 30 visitas</span></h2>
+    <div class="tabla" style="max-height:none">
+      <table>
+        <thead><tr><th>Fecha</th><th>Entrada</th><th>Salida</th><th>Permanencia</th></tr></thead>
+        <tbody id="hist"></tbody>
+      </table>
+    </div>
+    <div id="histVacio" class="vacio" hidden>Aún no tienes accesos registrados.</div>
+  </section>
+</main>
+
+<!-- Ayuda -->
+<main id="vAyuda" hidden>
+  <section class="card ancha ayuda">
+    <h2>Ayuda</h2>
+    <p><b>¿Cómo entro?</b> Abre Inicio y acerca la pantalla del celular al lector del torniquete, con el código completo a la vista.</p>
+    <p><b>El lector no lee el código.</b> Sube el brillo, evita reflejos y aleja o acerca un poco el celular.</p>
+    <p><b>Dice "Acceso no autorizado".</b> Tu acceso puede estar desactivado o con la vigencia vencida. Revisa "Mi acceso" en Inicio y acércate a la Administración de la sede.</p>
+    <p><b>Entrada y salida.</b> La primera lectura del día es la entrada y la siguiente, la salida. Si lees dos veces seguidas en menos de 15 segundos, la segunda se ignora.</p>
+    <p><b>Contingencia.</b> Si el sistema no funciona, el guardia valida tu identidad de forma manual.</p>
+    <p><b>Tus datos.</b> Solo se guarda tu RUT y la fecha y hora de entrada y salida, según la Ley 19.628 y la Ley 21.719.</p>
+  </section>
+</main>
+
+<p class="pie-nota">Prototipo QRonos (PRY-QRONOS-2026-01) · Santo Tomás, Sede Ruta 5</p>
+
+<script src="qrcode.min.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const CLAVE = "qronos_rut";
+  const ETIQUETA = { estudiante: "Estudiante", profesor: "Profesor", auxiliar: "Auxiliar" };
+  const VISTAS = { inicio: "vInicio", historial: "vHistorial", ayuda: "vAyuda" };
+  let rut = null, datos = null, tab = "inicio";
+  let venceQr = 0, duracionQr = 60, pidiendo = false;
+
+  const guardar = (v) => { try { v ? localStorage.setItem(CLAVE, v) : localStorage.removeItem(CLAVE); } catch (e) {} };
+  const leer = () => { try { return localStorage.getItem(CLAVE); } catch (e) { return null; } };
+  const fmtFecha = (f) => f.split("-").reverse().join("-");
+  function cuando(f) {
+    if (datos && f === datos.hoy) return "Hoy";
+    if (datos && f === datos.ayer) return "Ayer";
+    return fmtFecha(f);
+  }
+  // Reinicia una animación CSS sobre un elemento
+  function animar(e, clase) { e.classList.remove(clase); void e.offsetWidth; e.classList.add(clase); }
+  function numero(id, valor) {
+    const e = $(id), v = valor.toLocaleString("es-CL");
+    if (e.textContent === v) return;
+    const primera = e.textContent === "—";
+    e.textContent = v;
+    if (!primera) animar(e, "latido");
+  }
+  function chip(id, clase, texto) { const c = $(id); c.className = "chip " + clase; c.textContent = texto; }
+
+  function mostrarVista() {
+    const logueado = !!datos;
+    $("vLogin").hidden = logueado;
+    $("nav").hidden = !logueado;
+    $("avatar").hidden = !logueado;
+    for (const k in VISTAS) $(VISTAS[k]).hidden = !logueado || k !== tab;
+    document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("activo", b.dataset.tab === tab));
+  }
+
+  function dibujarQR(texto) {
+    const qr = qrcode(0, "M"); qr.addData(texto); qr.make();
+    const n = qr.getModuleCount(), m = 4, s = 8, lado = (n + m * 2) * s, c = $("qr");
+    c.width = c.height = lado;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, lado, lado);
+    ctx.fillStyle = "#03392b";
+    for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (qr.isDark(r, k)) ctx.fillRect((k + m) * s, (r + m) * s, s, s);
+  }
+
+  function fila(izq, der, clase) {
+    const d = document.createElement("div"); d.className = "fila";
+    const a = document.createElement("span"); a.textContent = izq;
+    const b = document.createElement("span"); b.className = "chip " + clase; b.textContent = der;
+    d.append(a, b); return d;
+  }
+
+  function pintar() {
+    const p = datos.persona;
+    $("avatar").textContent = (p.nombre || "?").trim().charAt(0).toUpperCase();
+    const q = $("quien"); q.textContent = p.nombre;
+    const sm = document.createElement("small");
+    sm.textContent = (ETIQUETA[p.tipo] || p.tipo) + (p.es_guardia ? " · Guardia" : "") + " · RUT " + p.rut;
+    q.append(sm);
+
+    const est = { activo: ["ok", "Activa"], inactivo: ["alerta", "Desactivada"], vencido: ["alerta", "Vencida"] }[p.estado];
+    chip("chipEstado", est[0], est[1]);
+    chip("chipAcceso", est[0], p.estado === "activo" ? "Puede entrar" : est[1]);
+    chip("chipServidor", "ok", "En línea");
+    $("vigencia").textContent = p.vigencia_hasta ? "Hasta el " + fmtFecha(p.vigencia_hasta.slice(0, 10)) : "Sin límite";
+    const av = $("aviso");
+    const bl = datos.bloqueo;
+    av.hidden = p.estado === "activo" && !bl;
+    av.textContent = p.estado === "inactivo"
+      ? "Tu acceso está desactivado: el lector rechazará este código. Acércate a la Administración."
+      : p.estado === "vencido"
+      ? "Tu vigencia venció: el lector rechazará este código. Acércate a la Administración."
+      : bl
+      ? "Tu entrada está bloqueada hasta el " + bl.hasta + (bl.hora_desde ? " (de " + bl.hora_desde + " a " + bl.hora_hasta + ")" : "") +
+        ". Motivo: " + bl.justificacion + ". Puedes salir con normalidad."
+      : "";
+    if (p.estado === "activo" && bl) chip("chipAcceso", "alerta", "Entrada bloqueada");
+
+    const a = datos.accesos;
+    const dentro = a.length && a[0].fecha === datos.hoy && !a[0].salida;
+    chip("chipAhora", dentro ? "ok" : "info", dentro ? "Dentro de la sede" : "Fuera de la sede");
+
+    // Últimos 3 movimientos (cada visita tiene ingreso y, si salió, salida)
+    const mov = [];
+    a.forEach((v) => {
+      if (v.salida) mov.push([v.fecha, v.salida, "Salida", "info"]);
+      mov.push([v.fecha, v.entrada, "Ingreso", "ok"]);
+    });
+    const u = $("ultimos"); u.replaceChildren();
+    if (!mov.length) { const v = document.createElement("div"); v.className = "vacio"; v.textContent = "Aún no tienes accesos registrados."; u.append(v); }
+    mov.slice(0, 3).forEach((m) => u.append(fila(cuando(m[0]) + ", " + m[1], m[2], m[3])));
+
+    numero("sEntradas", datos.sede.entradasHoy);
+    numero("sDentro", datos.sede.dentroAhora);
+    numero("sRechazos", datos.sede.rechazosHoy);
+
+    const tb = $("hist"); tb.replaceChildren();
+    $("histVacio").hidden = a.length > 0;
+    a.forEach((v) => {
+      const tr = document.createElement("tr");
+      [cuando(v.fecha), v.entrada, v.salida || "Dentro", v.permanencia || "—"].forEach((t) => {
+        const td = document.createElement("td"); td.textContent = t; tr.append(td);
+      });
+      tb.append(tr);
+    });
+  }
+
+  function cargar(r, desdeLogin) {
+    return fetch("/api/movil/" + encodeURIComponent(r))
+      .then((res) => res.json())
+      .then((d) => {
+        if (!d.ok) {
+          if (desdeLogin) { $("msgLogin").textContent = d.error; animar($("inRut"), "sacudir"); return; }
+          datos = null; guardar(null); mostrarVista(); $("msgLogin").textContent = d.error; return;
+        }
+        const nuevo = rut !== d.persona.rut;
+        rut = d.persona.rut; datos = d; guardar(rut);
+        $("msgLogin").textContent = "";
+        pintar(); mostrarVista();
+        if (nuevo || !venceQr) pedirQr();
+      })
+      .catch(() => {
+        if (desdeLogin || !datos) { $("msgLogin").textContent = "Sin conexión con el servidor."; mostrarVista(); return; }
+        chip("chipServidor", "alerta", "Sin conexión");
+      });
+  }
+
+  // Pide al servidor un código firmado que vence en 1 minuto y lo dibuja
+  function pedirQr() {
+    if (!rut || pidiendo) return;
+    pidiendo = true;
+    fetch("/api/movil/" + encodeURIComponent(rut) + "/qr")
+      .then((res) => res.json())
+      .then((d) => {
+        if (!d.ok) throw new Error(d.error);
+        // Se usa la hora del servidor para no depender del reloj del celular
+        const desfase = d.ahora * 1000 - Date.now();
+        venceQr = d.vence * 1000 - desfase;
+        duracionQr = d.segundos;
+        dibujarQR(d.texto);
+        $("qr").style.opacity = 1;
+        animar($("qr"), "surgir");
+        chip("chipServidor", "ok", "En línea");
+      })
+      .catch(() => {
+        venceQr = 0;
+        $("qr").style.opacity = .25;
+        $("contador").textContent = "Sin conexión: reintentando…";
+        chip("chipServidor", "alerta", "Sin conexión");
+      })
+      .finally(() => { pidiendo = false; });
+  }
+
+  // Cuenta regresiva del código; al vencer se pide uno nuevo y se actualizan los datos
+  let reintento = 0;
+  setInterval(() => {
+    if (!datos) return;
+    if (!venceQr) { if (Date.now() > reintento) { reintento = Date.now() + 3000; pedirQr(); } return; }
+    const rest = Math.max(0, Math.ceil((venceQr - Date.now()) / 1000));
+    $("contador").textContent = "Expira en " + rest + " s";
+    $("barra").style.width = (rest / duracionQr * 100) + "%";
+    const poco = rest <= 10;
+    $("contador").classList.toggle("poco", poco);
+    $("contador").classList.toggle("parpadeo", poco);
+    $("barra").parentNode.classList.toggle("poco", poco);
+    if (rest === 0) { venceQr = 0; $("qr").style.opacity = .25; pedirQr(); cargar(rut); }
+  }, 250);
+
+  $("btnEntrar").addEventListener("click", () => { const v = $("inRut").value.trim(); if (v) cargar(v, true); });
+  $("inRut").addEventListener("keydown", (e) => { if (e.key === "Enter") $("btnEntrar").click(); });
+  function salir() { datos = null; rut = null; venceQr = 0; guardar(null); tab = "inicio"; $("inRut").value = ""; mostrarVista(); $("inRut").focus(); }
+  $("btnSalir").addEventListener("click", salir);
+  $("avatar").addEventListener("click", () => { if (confirm("¿Cambiar de usuario?")) salir(); });
+  $("btnActualizar").addEventListener("click", () => cargar(rut));
+  $("btnNuevo").addEventListener("click", () => { venceQr = 0; pedirQr(); });
+  // Al volver a la app (por ejemplo, desde otra aplicación) se revisa si el código venció
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && datos && Date.now() >= venceQr) pedirQr(); });
+  document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; mostrarVista(); }));
+
+  const previo = leer();
+  if (previo) cargar(previo); else mostrarVista();
+})();
+</script>
+</body>
+</html>

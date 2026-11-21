@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QRonos · Estadísticas</title>
+<link rel="stylesheet" href="estilo.css">
+<style>
+  :root {
+    --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --gris:#9AA5A1;
+    --s5:#e87ba4; --s6:#008300; --s7:#6250d6; --s8:#e34948;
+    --barra:#a8d5bb; --barra-max:#0a7a4c; --grid:#eef1ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --gris:#5E6F69;
+      --s5:#d55181; --s6:#0ca30c; --s7:#9085e9; --s8:#e66767;
+      --barra:#2f5a45; --barra-max:#8fe0b0; --grid:#22322d;
+    }
+  }
+  :root[data-theme="dark"] {
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --gris:#5E6F69;
+    --s5:#d55181; --s6:#0ca30c; --s7:#9085e9; --s8:#e66767;
+    --barra:#2f5a45; --barra-max:#8fe0b0; --grid:#22322d;
+  }
+
+  .filtros { display:flex; flex-wrap:wrap; gap:8px; align-items:end; margin-bottom:16px; }
+  .filtros input { display:block; width:auto; }
+  #periodo { font-size:13px; color:var(--mut); margin-left:auto; align-self:center; }
+  #error { color:#C62828; font-size:14px; margin:0 0 12px; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px; margin-bottom:16px; }
+  .kpi { background:var(--card); border-radius:12px; box-shadow:var(--sombra); padding:14px 16px; }
+  .kpi .v { font-size:30px; font-weight:700; line-height:1.1; color:var(--verde); }
+  .kpi .l { font-size:13px; color:var(--mut); margin-top:4px; }
+
+  .grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px; }
+  @media (max-width:900px) { .grid { grid-template-columns:1fr; } }
+  .card h2 { margin-bottom:4px; }
+  .dato { margin:0 0 12px; font-size:14px; color:var(--mut); }
+  .dato b { color:var(--txt); }
+  .vacio { color:var(--mut); font-size:14px; padding:28px 0; text-align:center; }
+
+  .pie-wrap { display:flex; flex-wrap:wrap; gap:16px; align-items:center; }
+  .pie-wrap svg { width:240px; max-width:100%; height:auto; flex:none; }
+  .leyenda { flex:1; min-width:180px; border-collapse:collapse; font-size:14px; }
+  .leyenda td { padding:6px 4px; border-bottom:1px solid var(--line); }
+  .leyenda td.n { text-align:right; color:var(--mut); white-space:nowrap; }
+  .leyenda td.p { text-align:right; font-weight:bold; white-space:nowrap; }
+  .sw { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:8px; vertical-align:-1px; }
+
+  svg.chart { width:100%; height:auto; display:block; overflow:visible; }
+  svg text { fill:var(--mut); font-size:12px; font-family:"Segoe UI", system-ui, Arial, sans-serif; }
+  svg text.fuerte { fill:var(--txt); font-weight:bold; }
+  .hit { fill:transparent; cursor:default; }
+  .hit:hover + .mark, .mark.hover { opacity:.8; }
+
+  table.top { width:100%; border-collapse:collapse; font-size:14px; }
+  table.top th, table.top td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+  table.top td.n { text-align:right; font-weight:bold; }
+  table.top th.n { text-align:right; }
+
+  /* Animación de los gráficos al cargar */
+  svg.chart g[data-tip] > path { transform-box:fill-box; transform-origin:center bottom; animation:crecer .6s cubic-bezier(.2,.7,.3,1) backwards; }
+  svg.chart polyline { stroke-dasharray:1; animation:trazo 1.1s ease-out backwards; }
+  svg.chart polygon { animation:aparecer .8s ease .5s backwards; }
+  .pie-wrap svg path, .pie-wrap svg circle { transform-origin:130px 130px; animation:surgir .5s cubic-bezier(.2,.8,.3,1.2) backwards; }
+  .pie-wrap svg text { animation:aparecer .4s ease .4s backwards; }
+  .leyenda tr { animation:aparecer .35s ease backwards; }
+
+  #tip { position:fixed; pointer-events:none; background:var(--txt); color:var(--card); padding:6px 9px; border-radius:6px; font-size:13px; line-height:1.35; display:none; z-index:10; max-width:240px; }
+  .nota { font-size:12px; color:var(--mut); margin-top:16px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="marca">QR<span>onos</span><small>Panel de administración · Santo Tomás, Sede Ruta 5</small></div>
+    <div class="avatar" title="Administrador">A</div>
+  </div>
+</header>
+<nav class="tabs">
+  <div class="tabs-in">
+    <a href="/#lector">Lector</a>
+    <a href="/#registros">Registros</a>
+    <a href="/#personas">Personas</a>
+    <a href="estadisticas.html" class="activo">Estadísticas</a>
+    <a href="generar.html">Generar QR</a>
+    <a class="ext" href="movil.html" target="_blank" rel="noopener">App móvil ↗</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <div class="filtros">
+    <button class="btn sec" data-dias="7" type="button">7 días</button>
+    <button class="btn sec on" data-dias="30" type="button">30 días</button>
+    <button class="btn sec" data-dias="90" type="button">90 días</button>
+    <label>Desde<input type="date" id="fDesde"></label>
+    <label>Hasta<input type="date" id="fHasta"></label>
+    <button class="btn" id="btnRango" type="button">Aplicar</button>
+    <span id="periodo"></span>
+  </div>
+  <p id="error"></p>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>¿Quién entra más?</h2>
+      <p class="dato" id="datoTipo"></p>
+      <div id="pieTipo"></div>
+    </section>
+    <section class="card">
+      <h2>Entradas por día de la semana</h2>
+      <p class="dato" id="datoDia"></p>
+      <div id="barDia"></div>
+    </section>
+    <section class="card">
+      <h2>Entradas por hora</h2>
+      <p class="dato" id="datoHora"></p>
+      <div id="barHora"></div>
+    </section>
+    <section class="card">
+      <h2>Entradas por día en el período</h2>
+      <p class="dato" id="datoLinea"></p>
+      <div id="linea"></div>
+    </section>
+    <section class="card">
+      <h2>Intentos rechazados por motivo</h2>
+      <p class="dato" id="datoRech"></p>
+      <div id="pieRech"></div>
+    </section>
+    <section class="card">
+      <h2>Personas con más ingresos</h2>
+      <p class="dato">Las 5 personas que más entraron en el período.</p>
+      <div id="top"></div>
+    </section>
+  </div>
+  <p class="nota">El prototipo registra una sola entrada (Ruta 5), por eso no hay comparación entre accesos. Los datos se calculan desde los registros de MySQL.</p>
+</div>
+<div id="tip"></div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const NS = "http://www.w3.org/2000/svg";
+  const DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+  const DIAS_C = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+  const TIPOS = [
+    { k: "estudiante", n: "Estudiantes", c: "var(--s1)" },
+    { k: "profesor", n: "Profesores", c: "var(--s2)" },
+    { k: "auxiliar", n: "Auxiliares", c: "var(--s3)" },
+    { k: "sin_registrar", n: "Sin registrar", c: "var(--gris)" },
+  ];
+  const MOTIVOS = [
+    { k: "no_autorizado", c: "var(--s1)" },
+    { k: "vencido", c: "var(--s2)" },
+    { k: "inactivo", c: "var(--s3)" },
+    { k: "qr_no_reconocido", c: "var(--s4)" },
+    { k: "qr_vencido", c: "var(--s5)" },
+    { k: "qr_usado", c: "var(--s6)" },
+    { k: "qr_invalido", c: "var(--s7)" },
+    { k: "qr_estatico", c: "var(--s8)" },
+    { k: "bloqueado", c: "var(--gris)" },
+  ];
+  const pct = (n, t) => (t ? (n / t) * 100 : 0);
+  const fmtPct = (v) => (Math.round(v * 10) / 10).toLocaleString("es-CL") + " %";
+  const fmtN = (n) => Number(n).toLocaleString("es-CL");
+  const fmtFecha = (f) => f.split("-").reverse().join("-");
+
+  function el(tag, attrs, txt) {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs || {}) e.setAttribute(k, attrs[k]);
+    if (txt != null) e.textContent = txt;
+    return e;
+  }
+  function h(tag, cls, txt) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (txt != null) e.textContent = txt;
+    return e;
+  }
+  function vacio(cont, msg) { cont.replaceChildren(h("div", "vacio", msg || "Sin datos en el período.")); }
+
+  // ---------- Tooltip ----------
+  const tip = $("tip");
+  document.addEventListener("mousemove", (e) => {
+    const t = e.target.closest && e.target.closest("[data-tip]");
+    if (!t) { tip.style.display = "none"; return; }
+    tip.textContent = t.getAttribute("data-tip");
+    tip.style.display = "block";
+    const x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+    tip.style.left = x + "px";
+    tip.style.top = (e.clientY + 14) + "px";
+  });
+
+  // ---------- Pie con porcentajes ----------
+  function pie(cont, items) {
+    const total = items.reduce((s, i) => s + i.n, 0);
+    if (!total) return vacio(cont);
+    const R = 92, C = 130, svg = el("svg", { viewBox: "0 0 260 260", role: "img" });
+    let ang = -Math.PI / 2;
+    const visibles = items.filter((i) => i.n > 0);
+    for (const it of visibles) {
+      const frac = it.n / total, a2 = ang + frac * 2 * Math.PI;
+      const tipTxt = `${it.nombre}: ${fmtN(it.n)} (${fmtPct(frac * 100)})`;
+      let forma;
+      if (visibles.length === 1) {
+        forma = el("circle", { cx: C, cy: C, r: R, fill: it.c });
+      } else {
+        const x1 = C + R * Math.cos(ang), y1 = C + R * Math.sin(ang);
+        const x2 = C + R * Math.cos(a2), y2 = C + R * Math.sin(a2);
+        forma = el("path", {
+          d: `M${C},${C} L${x1},${y1} A${R},${R} 0 ${frac > 0.5 ? 1 : 0} 1 ${x2},${y2} Z`,
+          fill: it.c, stroke: "var(--card)", "stroke-width": 2, "stroke-linejoin": "round",
+        });
+      }
+      forma.setAttribute("data-tip", tipTxt);
+      forma.style.animationDelay = svg.childElementCount * 40 + "ms";
+      forma.style.setProperty("fill", it.c);
+      svg.append(forma);
+      // Porcentaje fuera de la porción, en color de texto
+      if (frac >= 0.04) {
+        const m = (ang + a2) / 2, rl = R + 20;
+        svg.append(el("text", {
+          x: C + rl * Math.cos(m), y: C + rl * Math.sin(m) + 4,
+          "text-anchor": "middle", class: "fuerte",
+        }, fmtPct(frac * 100)));
+      }
+      ang = a2;
+    }
+    const tabla = h("table", "leyenda");
+    for (const it of items) {
+      const tr = document.createElement("tr");
+      const td1 = document.createElement("td");
+      const sw = h("span", "sw"); sw.style.background = it.c;
+      td1.append(sw, it.nombre);
+      tr.append(td1, h("td", "n", fmtN(it.n)), h("td", "p", fmtPct(pct(it.n, total))));
+      tr.style.animationDelay = tabla.childElementCount * 50 + "ms";
+      tabla.append(tr);
+    }
+    const wrap = h("div", "pie-wrap");
+    wrap.append(svg, tabla);
+    cont.replaceChildren(wrap);
+  }
+
+  // ---------- Barras (un color; la mayor resaltada) ----------
+  function barras(cont, datos, opts) {
+    const total = datos.reduce((s, d) => s + d.n, 0);
+    if (!total) return vacio(cont);
+    const W = 560, H = 230, ml = 34, mb = 26, mt = 22, n = datos.length;
+    const max = Math.max(...datos.map((d) => d.n));
+    const techo = Math.max(1, Math.ceil(max / 4) * 4);
+    const ancho = (W - ml) / n, bw = Math.max(6, Math.min(44, ancho - 4));
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart", role: "img" });
+    for (let i = 0; i <= 4; i++) {
+      const v = (techo / 4) * i, y = H - mb - (v / techo) * (H - mb - mt);
+      svg.append(el("line", { x1: ml, x2: W, y1: y, y2: y, stroke: "var(--grid)", "stroke-width": 1 }));
+      svg.append(el("text", { x: ml - 6, y: y + 4, "text-anchor": "end" }, fmtN(Math.round(v))));
+    }
+    datos.forEach((d, i) => {
+      const x = ml + i * ancho + (ancho - bw) / 2;
+      const bh = (d.n / techo) * (H - mb - mt), y = H - mb - bh;
+      const esMax = d.n === max && max > 0;
+      const g = el("g", { "data-tip": `${opts.tip(d)}: ${fmtN(d.n)} entradas (${fmtPct(pct(d.n, total))})` });
+      g.append(el("rect", { class: "hit", x: ml + i * ancho, y: mt - 10, width: ancho, height: H - mb - mt + 10 }));
+      if (bh > 0) {
+        const r = Math.min(4, bh, bw / 2);
+        const barra = el("path", {
+          d: `M${x},${H - mb} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${H - mb} Z`,
+          fill: esMax ? "var(--barra-max)" : "var(--barra)",
+        });
+        barra.style.animationDelay = Math.min(i * 30, 600) + "ms"; // crecen una tras otra
+        g.append(barra);
+      }
+      if (esMax || (opts.etiquetarMin && d === opts.min)) {
+        g.append(el("text", { x: x + bw / 2, y: y - 6, "text-anchor": "middle", class: "fuerte" }, fmtPct(pct(d.n, total))));
+      }
+      if (!opts.cadaN || i % opts.cadaN === 0) {
+        g.append(el("text", { x: x + bw / 2, y: H - 8, "text-anchor": "middle" }, opts.etq(d)));
+      }
+      svg.append(g);
+    });
+    svg.append(el("line", { x1: ml, x2: W, y1: H - mb, y2: H - mb, stroke: "var(--line)", "stroke-width": 1 }));
+    cont.replaceChildren(svg);
+  }
+
+  // ---------- Línea por día ----------
+  function linea(cont, datos) {
+    const total = datos.reduce((s, d) => s + d.n, 0);
+    if (!total) return vacio(cont);
+    const W = 560, H = 230, ml = 34, mr = 8, mb = 26, mt = 14, n = datos.length;
+    const max = Math.max(...datos.map((d) => d.n));
+    const techo = Math.max(1, Math.ceil(max / 4) * 4);
+    const X = (i) => ml + (n === 1 ? (W - ml - mr) / 2 : (i / (n - 1)) * (W - ml - mr));
+    const Y = (v) => H - mb - (v / techo) * (H - mb - mt);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart", role: "img" });
+    for (let i = 0; i <= 4; i++) {
+      const v = (techo / 4) * i;
+      svg.append(el("line", { x1: ml, x2: W - mr, y1: Y(v), y2: Y(v), stroke: "var(--grid)", "stroke-width": 1 }));
+      svg.append(el("text", { x: ml - 6, y: Y(v) + 4, "text-anchor": "end" }, fmtN(Math.round(v))));
+    }
+    const pts = datos.map((d, i) => `${X(i)},${Y(d.n)}`).join(" ");
+    svg.append(el("polygon", { points: `${X(0)},${Y(0)} ${pts} ${X(n - 1)},${Y(0)}`, fill: "var(--barra)", opacity: 0.45 }));
+    svg.append(el("polyline", { points: pts, pathLength: 1, fill: "none", stroke: "var(--barra-max)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    const paso = Math.max(1, Math.ceil(n / 6));
+    const cross = el("line", { y1: mt, y2: H - mb, stroke: "var(--mut)", "stroke-width": 1, "stroke-dasharray": "3 3", visibility: "hidden" });
+    const punto = el("circle", { r: 4, fill: "var(--barra-max)", stroke: "var(--card)", "stroke-width": 2, visibility: "hidden" });
+    svg.append(cross, punto);
+    datos.forEach((d, i) => {
+      if (i % paso === 0 || i === n - 1) {
+        svg.append(el("text", { x: X(i), y: H - 8, "text-anchor": i === 0 ? "start" : i === n - 1 ? "end" : "middle" }, fmtFecha(d.fecha).slice(0, 5)));
+      }
+      const w = n === 1 ? W - ml - mr : (W - ml - mr) / (n - 1);
+      const hit = el("rect", { class: "hit", x: X(i) - w / 2, y: mt, width: w, height: H - mb - mt,
+        "data-tip": `${DIAS[(new Date(d.fecha + "T12:00:00").getDay() + 6) % 7]} ${fmtFecha(d.fecha)}: ${fmtN(d.n)} entradas` });
+      hit.addEventListener("mouseenter", () => {
+        cross.setAttribute("x1", X(i)); cross.setAttribute("x2", X(i)); cross.setAttribute("visibility", "visible");
+        punto.setAttribute("cx", X(i)); punto.setAttribute("cy", Y(d.n)); punto.setAttribute("visibility", "visible");
+      });
+      hit.addEventListener("mouseleave", () => { cross.setAttribute("visibility", "hidden"); punto.setAttribute("visibility", "hidden"); });
+      svg.append(hit);
+    });
+    cont.replaceChildren(svg);
+  }
+
+  // ---------- Pintar todo ----------
+  function kpis(r) {
+    const items = [
+      [fmtN(r.entradas), "Entradas en el período", r.entradas],
+      [fmtN(r.personas), "Personas distintas", r.personas],
+      [fmtN(r.promedioDiario), "Entradas promedio por día con actividad"],
+      [r.permanenciaMinutos == null ? "—" : `${Math.floor(r.permanenciaMinutos / 60)} h ${r.permanenciaMinutos % 60} min`, "Permanencia promedio"],
+      [fmtN(r.dentroAhora), "Dentro de la sede ahora", r.dentroAhora],
+      [fmtPct(r.porcentajeRechazo), `Intentos rechazados (${fmtN(r.rechazos)})`],
+    ];
+    $("kpis").replaceChildren(...items.map(([v, l, n]) => {
+      const k = h("div", "kpi"), val = h("div", "v", v);
+      k.append(val, h("div", "l", l));
+      if (typeof n === "number") contar(val, n);
+      return k;
+    }));
+  }
+
+  // Los números enteros suben desde 0 hasta su valor
+  function contar(e, n) {
+    if (n < 2) return;
+    const t0 = performance.now(), dur = 800;
+    const paso = (t) => {
+      const f = Math.min(1, (t - t0) / dur), suave = 1 - Math.pow(1 - f, 3);
+      e.textContent = fmtN(Math.round(n * suave));
+      if (f < 1) requestAnimationFrame(paso);
+    };
+    requestAnimationFrame(paso);
+  }
+
+  function setDato(id, partes) {
+    const p = $(id); p.replaceChildren();
+    partes.forEach((x) => p.append(typeof x === "string" ? x : h("b", null, x.b)));
+  }
+
+  function pintar(d) {
+    const r = d.resumen;
+    $("periodo").textContent = `Período: ${fmtFecha(d.desde)} al ${fmtFecha(d.hasta)}`;
+    kpis(r);
+
+    // Por tipo
+    const porTipo = TIPOS.map((t) => ({ nombre: t.n, c: t.c, n: (d.porTipo.find((x) => x.tipo === t.k) || { n: 0 }).n }))
+      .filter((t) => t.n > 0 || t.nombre !== "Sin registrar");
+    pie($("pieTipo"), porTipo);
+    const mayorTipo = [...porTipo].sort((a, b) => b.n - a.n)[0];
+    if (r.entradas) setDato("datoTipo", [{ b: mayorTipo.nombre }, ` son quienes más entran: ${fmtPct(pct(mayorTipo.n, r.entradas))} de las entradas.`]);
+    else setDato("datoTipo", ["Porcentaje de entradas según tipo de persona."]);
+
+    // Por día de la semana
+    const dias = DIAS.map((_, i) => ({ dia: i, n: (d.porDiaSemana.find((x) => x.dia === i) || { n: 0 }).n }));
+    const maxD = dias.reduce((a, b) => (b.n > a.n ? b : a));
+    const minD = dias.reduce((a, b) => (b.n < a.n ? b : a));
+    barras($("barDia"), dias, { etq: (x) => DIAS_C[x.dia], tip: (x) => DIAS[x.dia], etiquetarMin: true, min: minD });
+    if (r.entradas) setDato("datoDia", [{ b: DIAS[maxD.dia] }, ` es el día con más ingresos (${fmtPct(pct(maxD.n, r.entradas))}); `, { b: DIAS[minD.dia].toLowerCase() }, `, el de menos (${fmtPct(pct(minD.n, r.entradas))}).`]);
+    else setDato("datoDia", [""]);
+
+    // Por hora
+    let hMin = 7, hMax = 21;
+    d.porHora.forEach((x) => { hMin = Math.min(hMin, x.hora); hMax = Math.max(hMax, x.hora); });
+    const horas = [];
+    for (let i = hMin; i <= hMax; i++) horas.push({ hora: i, n: (d.porHora.find((x) => x.hora === i) || { n: 0 }).n });
+    const pico = horas.reduce((a, b) => (b.n > a.n ? b : a));
+    const hh = (x) => String(x).padStart(2, "0") + ":00";
+    barras($("barHora"), horas, { etq: (x) => String(x.hora).padStart(2, "0"), tip: (x) => `${hh(x.hora)} a ${hh(x.hora + 1)}`, cadaN: horas.length > 12 ? 2 : 1 });
+    if (r.entradas) setDato("datoHora", ["Hora punta: ", { b: `${hh(pico.hora)} a ${hh(pico.hora + 1)}` }, ` (${fmtPct(pct(pico.n, r.entradas))} de las entradas).`]);
+    else setDato("datoHora", [""]);
+
+    // Línea por día (rellena los días sin datos con 0)
+    const serie = [];
+    for (let f = new Date(d.desde + "T12:00:00"); f <= new Date(d.hasta + "T12:00:00"); f.setDate(f.getDate() + 1)) {
+      const k = f.getFullYear() + "-" + String(f.getMonth() + 1).padStart(2, "0") + "-" + String(f.getDate()).padStart(2, "0");
+      serie.push({ fecha: k, n: (d.porDia.find((x) => x.fecha === k) || { n: 0 }).n });
+    }
+    linea($("linea"), serie);
+    const mejor = serie.reduce((a, b) => (b.n > a.n ? b : a), serie[0]);
+    if (r.entradas) setDato("datoLinea", ["Día con más entradas: ", { b: fmtFecha(mejor.fecha) }, ` (${fmtN(mejor.n)}).`]);
+    else setDato("datoLinea", [""]);
+
+    // Rechazos
+    const rech = MOTIVOS.map((m) => {
+      const f = d.rechazosPorMotivo.find((x) => x.motivo === m.k);
+      return { nombre: f ? f.texto : m.k, c: m.c, n: f ? f.n : 0 };
+    }).filter((m) => m.n > 0);
+    if (rech.length) {
+      pie($("pieRech"), rech);
+      const mr = rech.reduce((a, b) => (b.n > a.n ? b : a));
+      setDato("datoRech", [`${fmtN(r.rechazos)} intentos. Motivo más común: `, { b: mr.nombre.toLowerCase() }, ` (${fmtPct(pct(mr.n, r.rechazos))}).`]);
+    } else {
+      vacio($("pieRech"), "No hubo intentos rechazados en el período.");
+      setDato("datoRech", [""]);
+    }
+
+    // Top 5
+    if (d.top.length) {
+      const t = h("table", "top");
+      const th = document.createElement("tr");
+      th.append(h("th", null, "#"), h("th", null, "Nombre"), h("th", null, "Tipo"), h("th", "n", "Entradas"));
+      t.append(th);
+      d.top.forEach((p, i) => {
+        const tr = document.createElement("tr");
+        tr.append(h("td", null, String(i + 1)), h("td", null, p.nombre || p.rut), h("td", null, p.tipo || "sin registrar"), h("td", "n", fmtN(p.n)));
+        t.append(tr);
+      });
+      $("top").replaceChildren(t);
+    } else vacio($("top"));
+  }
+
+  function cargar(qs) {
+    $("error").textContent = "";
+    fetch("/api/estadisticas" + (qs ? "?" + qs : ""))
+      .then((r) => r.json())
+      .then((d) => { if (!d.ok) throw new Error(d.error); pintar(d); })
+      .catch((e) => { $("error").textContent = "No se pudieron cargar las estadísticas: " + e.message; });
+  }
+
+  function hoyMenos(n) {
+    const f = new Date(); f.setDate(f.getDate() - n);
+    return f.getFullYear() + "-" + String(f.getMonth() + 1).padStart(2, "0") + "-" + String(f.getDate()).padStart(2, "0");
+  }
+  const botones = document.querySelectorAll("[data-dias]");
+  botones.forEach((b) => b.addEventListener("click", () => {
+    botones.forEach((x) => x.classList.toggle("on", x === b));
+    const n = Number(b.dataset.dias);
+    $("fDesde").value = hoyMenos(n - 1); $("fHasta").value = hoyMenos(0);
+    cargar(`desde=${$("fDesde").value}&hasta=${$("fHasta").value}`);
+  }));
+  $("btnRango").addEventListener("click", () => {
+    botones.forEach((x) => x.classList.remove("on"));
+    const p = new URLSearchParams();
+    if ($("fDesde").value) p.set("desde", $("fDesde").value);
+    if ($("fHasta").value) p.set("hasta", $("fHasta").value);
+    cargar(p.toString());
+  });
+  $("fDesde").value = hoyMenos(29); $("fHasta").value = hoyMenos(0);
+  cargar();
+</script>
+</body>
+</html>
